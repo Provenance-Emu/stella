@@ -165,9 +165,10 @@ void EventHandler::addPhysicalJoystick(const PhysicalJoystickPtr& joy)
 
   setActionMappings(EventMode::kEmulationMode);
   setActionMappings(EventMode::kMenuMode);
-
+#ifdef GUI_SUPPORT
   if(myOverlay)
     myOverlay->handleEvent(Event::UIReload);
+#endif
 #endif
 }
 
@@ -177,8 +178,10 @@ void EventHandler::removePhysicalJoystick(int id)
 #ifdef JOYSTICK_SUPPORT
   myPJoyHandler->remove(id);
 
+#ifdef GUI_SUPPORT
   if(myOverlay)
     myOverlay->handleEvent(Event::UIReload);
+#endif
 #endif
 }
 
