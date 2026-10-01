@@ -18,11 +18,40 @@
 #ifndef VARIANT_HXX
 #define VARIANT_HXX
 
+#include <cerrno>
+#include <cstdlib>
 #include <optional>
 #include <variant>
 
 #include "Rect.hxx"
 #include "bspf.hxx"
+
+namespace VariantDetail {
+  // Floating-point std::from_chars needs a newer libc++ runtime than older
+  // Apple deployment targets ship (iOS/tvOS < 26, macOS < 26), where it is
+  // marked unavailable; fall back to strtof/strtod there.
+  template<typename T>
+  inline std::from_chars_result fromChars(const char* first, const char* last, T& value)
+  {
+  #if defined(_LIBCPP_AVAILABILITY_HAS_FROM_CHARS_FLOATING_POINT) && \
+      !_LIBCPP_AVAILABILITY_HAS_FROM_CHARS_FLOATING_POINT
+    if constexpr(std::is_floating_point_v<T>) {
+      const string s(first, last);
+      char* end = nullptr;
+      errno = 0;
+      const T v = std::is_same_v<T, float> ? std::strtof(s.c_str(), &end)
+                                           : std::strtod(s.c_str(), &end);
+      const char* const ptr = first + (end - s.c_str());
+      if(end == s.c_str())  return { first, std::errc::invalid_argument };
+      if(errno == ERANGE)   return { ptr, std::errc::result_out_of_range };
+      value = v;
+      return { ptr, std::errc{} };
+    }
+    else
+  #endif
+      return std::from_chars(first, last, value);
+  }
+}  // namespace VariantDetail
 
 /**
   This class implements a variant type using std::variant.  Whenever
@@ -211,7 +240,7 @@ class Variant
           else if constexpr(std::is_convertible_v<T, string_view>) {
             float result{};
             auto sv = string_view(v);
-            const auto [ptr, ec] = std::from_chars(sv.data(), sv.data() + sv.size(), result);
+            const auto [ptr, ec] = VariantDetail::fromChars(sv.data(), sv.data() + sv.size(), result);
             return (ec == std::errc{}) ? result : 0.F;
           }
           else
@@ -226,7 +255,7 @@ class Variant
           else if constexpr(std::is_convertible_v<T, string_view>) {
             double result{};
             auto sv = string_view(v);
-            auto [ptr, ec] = std::from_chars(sv.data(), sv.data() + sv.size(), result);
+            auto [ptr, ec] = VariantDetail::fromChars(sv.data(), sv.data() + sv.size(), result);
             return (ec == std::errc{}) ? result : 0.0;
           }
           else
